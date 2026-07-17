@@ -1,0 +1,15 @@
+*.parquet
+*.tfrecord
+*.h5
+*.root
+*.npz
+*.npy
+data/
+tfrecords/
+*.ckpt
+*checkpoint*
+wandb/
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+.pixi/
