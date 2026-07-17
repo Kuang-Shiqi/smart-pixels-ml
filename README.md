@@ -10,6 +10,9 @@ To reproduce the current symbolic MoE pipeline, run these two notebooks in order
    - Loads the trained checkpoint from step 1 and compares against paper baselines (Conv2D, Conv1D, MLP).
    - Produces residual/pull plots and summary stats.
 
-Run both **top to bottom** (Restart Kernel and Run All) rather than executing cells out of order.
 
 Questions? Ping Shiqi.
+
+Things can be explored:
+1. Ansatz forms: /depot/cms/private/users/kuang14/Smart_Pixel/smart-pixels-symbolic-updated/two_bit_optimization_helpers/symbolic/ansatz. Try if you can make the symbolic better by updating the ansatz formula.
+2. Knowledge distillation: `distill.py`. MDMM auto-balances the KL term via `lam` — try tuning `mdmm_eta`, `kl_target`, or `warmup_steps` and see how it affects training stability.
