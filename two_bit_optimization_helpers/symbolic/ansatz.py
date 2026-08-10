@@ -10,18 +10,36 @@ Three variants, selected by the `variant` argument:
   - 'blend'      : learned mix `(1-w) * barycenter + w * localreco` per output
 
 Geometry constants come from the IOP paper (10.1088/2632-2153/ad6a00) appendix:
-  p_x = 50 um  (pitch along x = axis-1 of the input tensor)
-  p_y = 12.5 um (pitch along y = axis-2 of the input tensor)
+  p_x = 50 um  (pitch along x = axis-2 of the input tensor)
+  p_y = 12.5 um (pitch along y = axis-1 of the input tensor)
   T   = 100 um (sensor thickness)
 
-Axis convention follows the repo's existing MLP encoder: axis 1 (H) maps to x
-and axis 2 (W) maps to y. Time slices live on the channel axis (axis 3).
+=========================== AXIS CONVENTION (v3, measured) ==========================
+Axis 1 (rows) maps to y with the 12.5 um pitch; axis 2 (cols) maps to x with the
+50 um pitch. Time slices live on the channel axis (axis 3).
 
-============================ SIGN CHANGE (v2, TimeGrad) ============================
-BOTH angles are now emitted SIGNED, with NO external (teacher) sign needed.
+This is the TRANSPOSE of what v2 of this file assumed. Measured directly from
+50k centeredIncidence val events (axis_convention_diagnostic.ipynb):
 
-Magnitude (unchanged): cluster width, which is EVEN in the angle -> |cot|.
-Sign (new): the between-time-slice centroid drift, which is ODD in the angle.
+    col centroid -> label x   corr 0.927, slope 43.2 um/px   (row -> x: corr 0.002)
+    row centroid -> label y   corr 0.914, slope 10.5 um/px   (col -> y: corr 0.002)
+    col width -1  -> |cot a|  corr 0.990, implied pitch 51.9 um
+    row width -1  -> |cot b|  corr 0.944, implied pitch 14.8 um
+
+(Centroid slopes read ~15% under the true pitch through ordinary regression
+dilution; the ratio, 4.13 vs 50/12.5 = 4.00, is the scale-free check. The width
+slopes are the cleaner pitch estimate.)
+
+v2 patched only the two POSITION slots, from a wrapper outside this file. The
+same two axes also carry the pitches, both angle magnitudes and the sign
+observables, so the correction belongs here and applies to all of them at once.
+Any external axis-swapping wrapper must now be REMOVED -- it would double-swap.
+
+============================ SIGN (v2 TimeGrad, unchanged) ==========================
+BOTH angles are emitted SIGNED, with NO external (teacher) sign needed.
+
+Magnitude: cluster width, which is EVEN in the angle -> |cot|.
+Sign: the between-time-slice centroid drift, which is ODD in the angle.
 The July-2026 angle-sign study localized the sign to the (spatially-even x
 time-odd) symmetry sector of the cluster and found single-scalar observables
 that saturate the raw-512-pixel information ceiling (bal. acc ~0.96):
@@ -29,16 +47,29 @@ that saturate the raw-512-pixel information ceiling (bal. acc ~0.96):
     Tx = <x>_{last slice} - <x>_{first slice}   (between-slice x-centroid drift, um)
     Ty = <y>_{last slice} - <y>_{first slice}   (between-slice y-centroid drift, um)
 
-    sign(cot a) = tanh( sign_k_alpha * (sign_a0_alpha - Ty) )     [cross-coupled:
-    sign(cot b) = tanh( sign_k_beta  * (sign_a0_beta  - Tx) )      a<-Ty, b<-Tx]
+    sign(cot a) = tanh( sign_k_alpha * (sign_a0_alpha - Tx) )     [uncrossed:
+    sign(cot b) = tanh( sign_k_beta  * (sign_a0_beta  - Ty) )      a<-Tx, b<-Ty]
 
-Measured on centeredIncidence analog val (108k events, balanced accuracy):
-    Ty -> sign(cot a): 0.9667      Tx -> sign(cot b): 0.9631
+The PAIRING here is byte-for-byte the same physical observable v2 used and is
+measured at bal. acc 0.9661 (a) and 0.9644 (b); the other two pairings sit at
+chance (0.504, 0.500). Only the NAMES change: what v2 called Ty was already the
+column drift, i.e. the x-drift. Under the corrected axis names the coupling is
+the uncrossed one the physics expects -- each angle is signed by the drift along
+its OWN axis. Do not "re-cross" it back.
+
 Sign-convention lock: k = -1 direction for both, i.e. tanh(k*(a0 - T)) with
-k > 0. Offsets: a0_alpha ~ 0; a0_beta ~ -16 um (constant between-slice x-drift,
-plausibly the Lorentz E x B drift measured a second way -- hence trainable, so
-it can co-adapt with theta_L). The old y-skewness sign (chance-level, 0.50) is
-REMOVED. All time-summed spatial moments are provably blind to the sign.
+k > 0. The drifts carry the corrected pitch, so the v2 calibration does not
+transfer. Refitted on 40k train events under the v3 axes:
+    k_alpha = 0.158 /um   a0_alpha = +0.16 um   (bal. acc 0.9672)
+    k_beta  = 0.335 /um   a0_beta  = -10.86 um  (bal. acc 0.9631)
+The defaults below are those values. Against T*tan(22 deg) = 40 um, a0_beta at
+-10.9 um is not a clean match, so the v2 reading of a0_beta as "the Lorentz
+E x B drift measured a second way" does not survive the pitch correction
+-- flagged, not resolved. Both stay trainable, and the training notebook refits
+(k, a0) from data by logistic fit, so these defaults are only a starting point.
+
+The old y-skewness sign (chance-level, 0.50) is REMOVED. All time-summed spatial
+moments are provably blind to the sign.
 
 The training wrapper must NOT apply any external sign to either angle slot
 (pass sa = sb = +1 to apply_sign, or skip it). Deployment: back up and replace
@@ -56,8 +87,8 @@ import tensorflow as tf
 from tensorflow.keras import layers
 
 GEOMETRY = dict(
-    p_x=50.0,    # micrometers, x-pitch (axis-1 of input)
-    p_y=12.5,    # micrometers, y-pitch (axis-2 of input)
+    p_x=50.0,    # micrometers, x-pitch (axis-2 of input, i.e. columns)
+    p_y=12.5,    # micrometers, y-pitch (axis-1 of input, i.e. rows)
     T=100.0,     # micrometers, sensor thickness
     N=16,        # array side in pixels
 )
@@ -78,8 +109,8 @@ class PhysicsAnsatz(layers.Layer):
                  fixed_pitch_x=None, fixed_pitch_y=None, fixed_T=None,
                  initial_theta_L_deg=22.0,
                  labels_scale=None,
-                 initial_sign_k_alpha=2.0, initial_sign_a0_alpha=0.0,
-                 initial_sign_k_beta=1.0,  initial_sign_a0_beta=-16.0,
+                 initial_sign_k_alpha=0.158, initial_sign_a0_alpha=0.155,
+                 initial_sign_k_beta=0.335,  initial_sign_a0_beta=-10.86,
                  **kwargs):
         """
         labels_scale: optional length-4 list of the per-output divisors used
@@ -88,7 +119,8 @@ class PhysicsAnsatz(layers.Layer):
             per the locked convention tanh(k * (a0 - T)); trainable, and CAN go
             negative if the data demands a convention flip.
         initial_sign_a0_* : sign-boundary offset in um. a0_beta absorbs the
-            constant between-slice x-drift (~ -16 um; Lorentz-drift candidate).
+            constant between-slice y-drift (~ -10.9 um measured; see the header
+            on why the Lorentz reading of it is shaky).
             Best practice: calibrate both (k, a0) from a quick 1-feature
             logistic fit on the training data and pass them here.
         """
@@ -181,28 +213,32 @@ class PhysicsAnsatz(layers.Layer):
         qs = tf.nn.relu(charge)                       # (B, 16, 16, T)
         q_first, q_last = qs[..., 0], qs[..., -1]     # (B, 16, 16)
 
-        def _centroid(q2d, axis_keep, centers):
-            # axis_keep: 1 -> x-profile (sum over axis 2); 2 -> y-profile (sum over axis 1)
-            prof = tf.reduce_sum(q2d, axis=(2 if axis_keep == 1 else 1))   # (B, 16)
+        def _centroid(q2d, sum_axis, centers):
+            # sum_axis=1 collapses rows -> col-indexed (x) profile;
+            # sum_axis=2 collapses cols -> row-indexed (y) profile.
+            prof = tf.reduce_sum(q2d, axis=sum_axis)                       # (B, 16)
             tot = tf.reduce_sum(prof, axis=1)                              # (B,)
             return _safe_div(tf.reduce_sum(prof * centers, axis=1), tot)
 
+        # x lives on axis 2 (cols, 50 um); y on axis 1 (rows, 12.5 um).
         Tx = _centroid(q_last, 1, x_centers) - _centroid(q_first, 1, x_centers)
         Ty = _centroid(q_last, 2, y_centers) - _centroid(q_first, 2, y_centers)
         # finite-guard + physical clip (centroids bounded by the array extent)
         Tx = tf.clip_by_value(tf.where(tf.math.is_finite(Tx), Tx, tf.zeros_like(Tx)), -800.0, 800.0)
         Ty = tf.clip_by_value(tf.where(tf.math.is_finite(Ty), Ty, tf.zeros_like(Ty)), -200.0, 200.0)
 
-        arg_a = tf.clip_by_value(self.sign_k_alpha * (self.sign_a0_alpha - Ty), -30.0, 30.0)
-        arg_b = tf.clip_by_value(self.sign_k_beta  * (self.sign_a0_beta  - Tx), -30.0, 30.0)
+        # Each angle is signed by the drift along its OWN axis (see header).
+        arg_a = tf.clip_by_value(self.sign_k_alpha * (self.sign_a0_alpha - Tx), -30.0, 30.0)
+        arg_b = tf.clip_by_value(self.sign_k_beta  * (self.sign_a0_beta  - Ty), -30.0, 30.0)
         return tf.tanh(arg_a), tf.tanh(arg_b)         # (B,), (B,)
 
     # ---------------------------------------------------------------- call --
     def call(self, charge):
         # charge: (B, H=16, W=16, T). Sum over time -> (B, H, W).
         q = tf.reduce_sum(charge, axis=-1)
-        prof_x = tf.reduce_sum(q, axis=2)   # x-profile: (B, H)
-        prof_y = tf.reduce_sum(q, axis=1)   # y-profile: (B, W)
+        # x is the COLUMN axis (axis 2, 50 um); y is the ROW axis (axis 1, 12.5 um).
+        prof_x = tf.reduce_sum(q, axis=1)   # x-profile, col-indexed: (B, W)
+        prof_y = tf.reduce_sum(q, axis=2)   # y-profile, row-indexed: (B, H)
 
         N = GEOMETRY['N']
         x_centers = _pixel_centers(N, self.p_x)
@@ -214,7 +250,10 @@ class PhysicsAnsatz(layers.Layer):
         sum_y = tf.reduce_sum(prof_y, axis=1)
         y_bary = _safe_div(tf.reduce_sum(prof_y * y_centers, axis=1), sum_y)
 
-        # Lorentz drift offset on y
+        # Lorentz drift offset on y. NOTE: for 'barycenter' this is a constant
+        # added to one output, so it is fully degenerate with the trainable
+        # aff_bias and cannot change the position fit. The non-degenerate
+        # Lorentz term is the one inside cotb_abs below.
         dy = self.T * tf.tan(self.theta_L)
         y_bary_corr = y_bary + dy / 2.0
 

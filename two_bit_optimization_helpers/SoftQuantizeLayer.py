@@ -10,6 +10,23 @@ from typing import Optional, List
 # L_i = L0 + sum over j of softplus(Delta_L_raw[j])
 # T_0 = T_off + softplus(Delta_T_raw[0])
 # T_i = T_{i-1} + softplus(Delta_T_raw[i]) for i > 0
+#
+# `parametrization` selects how Delta is recovered from the raw weight:
+#
+#   'paper'  Delta = softplus(theta), theta_init = inv_softplus(Delta).
+#            This is Eq. 2 of arXiv:2602.15946. d(Delta)/d(theta) = sigmoid(theta)
+#            ~ 1, so every threshold moves at a comparable rate under a shared
+#            learning rate.
+#
+#   'legacy' Delta = softplus(expm1(theta)), theta_init = log1p(Delta).
+#            The historical form. It round-trips to the same *values* (softplus is
+#            the identity for arguments of a few hundred electrons), so anything
+#            trained with frozen thresholds is unaffected and existing checkpoints
+#            still load. But d(Delta)/d(theta) ~ exp(theta) ~ Delta, which measures
+#            ~200x larger threshold gradients than 'paper' at these charge scales:
+#            the same learning rate that is right for the model weights sends the
+#            thresholds flying. Kept as the default for checkpoint compatibility
+#            only; use 'paper' for any training that unfreezes the thresholds.
 
 class SoftQuantizeLayer(tf.keras.layers.Layer):
     """
@@ -24,24 +41,29 @@ class SoftQuantizeLayer(tf.keras.layers.Layer):
                  trainable_thresholds=True,
                  initial_k=1.0,
                  trainable_k=False,
+                 parametrization: str='legacy',
+                 min_delta: float=1.0,
                  **kwargs):
         super(SoftQuantizeLayer, self).__init__(**kwargs)
         assert isinstance(n_bits, int) and n_bits > 0, "'n_bits' must be a positive integer."
-        
+        assert parametrization in ('paper', 'legacy'), \
+            f"parametrization must be 'paper' or 'legacy', got {parametrization!r}"
+
         self.n_bits = n_bits
         self.num_levels = 2 ** self.n_bits
-        
+
         self.initial_levels = initial_levels
         self.initial_thresholds = initial_thresholds
         self.threshold_offset = threshold_offset
-        
+
         self.trainable_levels = trainable_levels
         self.trainable_thresholds = trainable_thresholds
         self.initial_k = initial_k
         self.trainable_k = trainable_k
-        
-        if initial_levels is None or initial_thresholds is None:
-            self.initial_range = (-1.0, 1.0)
+        self.parametrization = parametrization
+        self.min_delta = float(min_delta)
+
+        self.initial_range = (-1.0, 1.0)
         
     @staticmethod
     def _softplus(z):
@@ -87,10 +109,15 @@ class SoftQuantizeLayer(tf.keras.layers.Layer):
     
     def build_levels(self):
         initial_levels = self._init_levels()
-        
+
         if not self.trainable_levels:
-            self.initial_levels = tf.constant(self.initial_levels, dtype=tf.float32)
-        
+            # Stored as numpy, converted to a tensor at call time. Two reasons:
+            # overwriting self.initial_levels with a tensor made a second build()
+            # -- which Keras 3 does routinely -- fail in _init_levels, and a
+            # tf.constant created during build belongs to whatever scratch graph
+            # build ran in, so it is out of scope by the time call() needs it.
+            self._levels_np = np.asarray(initial_levels, dtype=np.float32)
+
         else:
             first_level_init = initial_levels[0]
             deltas_levels_init = np.diff(initial_levels)
@@ -102,7 +129,8 @@ class SoftQuantizeLayer(tf.keras.layers.Layer):
                 trainable=self.trainable_levels
             )
 
-            level_deltas_raw_init = self._log1p(deltas_levels_init).numpy()
+            level_deltas_raw_init = np.log1p(
+                np.asarray(deltas_levels_init, dtype=np.float64)).astype(np.float32)
             self.level_deltas_raw = self.add_weight(
                 name='level_deltas_raw',
                 shape=(self.num_levels - 1,),
@@ -119,8 +147,22 @@ class SoftQuantizeLayer(tf.keras.layers.Layer):
                                          prepend=self.threshold_offset)
 
         assert np.all(deltas_thresholds_init > 0), f"\nInitial thresholds must be strictly increasing. \nGiven threshold_offset: {self.threshold_offset}, initial_thresholds: {initial_thresholds}\n Check if they satisfy: threshold_offset < T0 < T1 < ... < T{B-1}."
-            
-        threshold_deltas_raw_init = self._log1p(deltas_thresholds_init).numpy()
+
+        # Initialisers are computed in numpy on purpose: build() can run inside a
+        # symbolic tracing scope, where a tf op returns a SymbolicTensor and .numpy()
+        # does not exist.
+        if self.parametrization == 'paper':
+            # Eq. 2 inverted: theta = inv_softplus(Delta - min_delta), guarded so a
+            # 400 e- gap does not overflow expm1 in float32.
+            assert np.all(deltas_thresholds_init > self.min_delta), (
+                f"initial bin widths {deltas_thresholds_init} must all exceed "
+                f"min_delta={self.min_delta}")
+            z = np.asarray(deltas_thresholds_init - self.min_delta, dtype=np.float64)
+            threshold_deltas_raw_init = np.where(
+                z > 20.0, z, np.log(np.expm1(np.minimum(z, 20.0)))).astype(np.float32)
+        else:
+            threshold_deltas_raw_init = np.log1p(
+                np.asarray(deltas_thresholds_init, dtype=np.float64)).astype(np.float32)
         self.threshold_deltas_raw = self.add_weight(
             name='threshold_deltas_raw',
             shape=(B,), 
@@ -145,8 +187,8 @@ class SoftQuantizeLayer(tf.keras.layers.Layer):
     def levels(self):
         """Calculates the trainable, non-uniform output levels."""
         if not self.trainable_levels:
-            return tf.constant(self.initial_levels, dtype=tf.float32)
-        
+            return tf.convert_to_tensor(self._levels_np, dtype=tf.float32)
+
         else:
             deltas = self._expm1(self.level_deltas_raw)
             # deltas = self._softplus(deltas)
@@ -156,21 +198,29 @@ class SoftQuantizeLayer(tf.keras.layers.Layer):
                             axis=0
                             )
         
+    def _threshold_deltas(self):
+        """Strictly positive bin widths Delta_j. Monotonicity of T comes from
+        these being positive by construction -- no sort, no clip, no penalty."""
+        if self.parametrization == 'paper':
+            # min_delta keeps bins strictly positive even if a delta is driven to
+            # zero, so T stays strictly increasing and tau never collapses.
+            return self.min_delta + self._softplus(self.threshold_deltas_raw)
+        return self._softplus(self._expm1(self.threshold_deltas_raw))
+
     @property
     def thresholds(self):
-        deltas = self._expm1(self.threshold_deltas_raw)
-        deltas = self._softplus(deltas)
-        return self.threshold_offset + tf.cumsum(deltas)
+        # Eq. 3: T_j = T_min + cumsum(Delta).  T_min is threshold_offset.
+        return self.threshold_offset + tf.cumsum(self._threshold_deltas())
 
     @property
     def k(self):
         return tf.exp(self.log_k)
-    
+
     @property
     def tau(self):
-        deltas = self._expm1(self.threshold_deltas_raw)
-        dT = self._softplus(deltas)
-        right = tf.concat([dT[1:], dT[-1:]], axis=0)    
+        # Eq. 5: tau_j = (Delta_j + Delta_{j+1}) / 2
+        dT = self._threshold_deltas()
+        right = tf.concat([dT[1:], dT[-1:]], axis=0)
         tau = 0.5 * (dT + right)                        
         tau = tf.maximum(tau, tf.cast(1e-6, tau.dtype))
         return tf.stop_gradient(tau)                                      
@@ -216,7 +266,9 @@ class SoftQuantizeLayer(tf.keras.layers.Layer):
             'trainable_levels': self.trainable_levels,
             'trainable_thresholds': self.trainable_thresholds,
             'initial_k': self.initial_k,
-            'trainable_k': self.trainable_k
+            'trainable_k': self.trainable_k,
+            'parametrization': self.parametrization,
+            'min_delta': self.min_delta,
         })
         return config
     
