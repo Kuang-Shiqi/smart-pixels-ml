@@ -2,17 +2,38 @@
 
 ## 0. How to work in this repo
 
-- **All code runs on Purdue AF / Gilbreth. You do not have the cluster filesystem.**
-  Produce code the user copies in, or writes into `.ipynb` cells here for the user to Run-All.
-- **You can edit notebooks, you cannot run them.** Write/patch cells, then stop and wait for the
-  user to paste back stdout / tracebacks.
-- **Cell style:** self-contained, imports at the top of each cell, runnable *in place* without
-  re-executing the whole notebook. The user runs individual cells constantly. No "bolt-on" patch
-  cells appended at the bottom — fold fixes into the canonical cell.
+**TRAINING RUNS FROM SCRIPTS. PLOTS RUN FROM NOTEBOOKS. Do not mix the two.**
+(Decided 2026-08-14. Full detail in `scripts/RUNBOOK.md`.)
+
+- **Training = `scripts/train_arm.py`**, one arm per invocation, every knob a flag, every flag
+  recorded in `summary.json`. You can run it yourself:
+  `/work/users/kuang14/smart_pixels/bin/python scripts/train_arm.py --n-bits 2 ...`
+  Use `--dry-run` first. `scripts/run_queue.sh` chains arms sequentially.
+- **Why.** A notebook open in JupyterLab keeps its own in-memory copy and overwrites the file
+  when it saves. This already cost a threshold-freeze fix (reverted silently in
+  `train_noise_ablation.ipynb`) and a `NOISE_SIGMA` edit, which produced a run whose config did
+  not match its own output directory. Scripts have one writer.
+- **Never edit a notebook the user has open.** If a notebook edit is unavoidable, say so and tell
+  them to `File > Reload Notebook from Disk` first.
+- **Plots = notebooks**, because the user reads them interactively. Cell style there is unchanged:
+  self-contained, imports at the top, runnable *in place*. No bolt-on patch cells at the bottom —
+  fold fixes into the canonical cell.
+- **One-off recovery in a live kernel:** write a `.py` next to the notebook and have the user run
+  `%run -i thing.py`. `-i` shares the namespace, so it sees the trained model. Beats pasting a
+  long cell out of the terminal, which they cannot easily copy.
 - **Terse output.** Bulleted, copy-paste-ready. Skip the explanation unless asked. Do not restate
   the plan back before doing it.
 - If the user says a bug is confirmed, it is confirmed. Do not re-litigate with alternative
   explanations.
+
+### Environment (measured, not assumed)
+
+| | |
+|---|---|
+| training interpreter | `/work/users/kuang14/smart_pixels/bin/python` — TF **2.15.1 / Keras 2.15** / qkeras. This is the `SmartPixels` Jupyter kernel |
+| AF global pixi env | `/work/pixi/global/...` — pandas/numpy/matplotlib only, **no qkeras**, cannot train. Fine for reading parquets and running the plotting cells headlessly |
+| GPU | one **A100 MIG 1g.5gb slice (5 GB)**, not a full A100. Run arms sequentially |
+| Slurm | `sbatch`/`squeue` reachable; Hammer has 13 GPU nodes, 30-day walltime. **Blocked**: workers see only `/depot`, and the training env lives on `/work` |
 
 ## 1. Project in one paragraph
 
@@ -40,7 +61,11 @@ Core modules (in the symbolic repo):
 - `two_bit_optimization_helpers/symbolic/ansatz.py` — the physics formula + sign head
 - `two_bit_optimization_helpers/models/student_max.py` — `build_student_max(variant, ansatz_kwargs=...)`
 - `two_bit_optimization_helpers/{distill,loss,train,prepare_tfrecords}.py`
-- Notebooks:
+- **Scripts (the canonical training path):**
+  - `scripts/train_arm.py` — one arm, all knobs as flags. `--dry-run` to check first
+  - `scripts/run_queue.sh` — chains arms sequentially, skips ones with a `logs/*.done` marker
+  - `scripts/RUNBOOK.md` — commands, the arm table, and the gotchas that already bit us
+- Notebooks (plots; the two training notebooks are now secondary, kept for interactive debugging):
   - `train_symbolic_nexp_ablation.ipynb` — N-expert ablation, analog input
   - `train_digitization_ablation.ipynb` — same student + `DigitizeLayer`. Clean input (sigma = 0)
   - `train_noise_ablation.ipynb` — duplicate of the above with `NOISE_SIGMA` on. Same
@@ -133,6 +158,27 @@ because of the input-encoding bug in §5.
    v3 there is no wrapper, so the plain call works; keep `getattr(e, "inner", e)` where it already
    is, since it is a no-op now and still loads the v2-era runs.
 6. **`TF_USE_LEGACY_KERAS=1` breaks training** (numerical incompatibility with Keras 3.x). Never set it.
+6b. **`Variable.trainable` is READ-ONLY in the training env** (Keras 2.15 -> `add_weight` returns a
+   `tf.Variable`). `threshold_deltas_raw.trainable = False` raises
+   `AttributeError: can't set attribute`, while `.assign()` on the same variable works. Use
+   `freeze_adc_thresholds()` (in `train_arm.py`): variable -> sublayer -> private flag, verified
+   against `model.trainable_variables`, which is the only list the optimizer reads. In this env it
+   takes the **sublayer** path.
+6c. **This dataset has INTRINSIC negative charge** with the noise off: ~2.9% of pixels, minimum
+   around -3400 e- (shaping undershoot in the convolved simulation). Any "negative charge implies
+   injected noise" logic is wrong here. To measure an injected sigma, use
+   `median(|q|, q<0)/0.6745` — robust to that tail, because real noise makes ~half of all pixels
+   negative while the intrinsic tail is rare.
+6d. **Train and eval splits carry DIFFERENT `labels_scale`** (99th percentile of |label|, computed
+   per split): train `123.410162 / 30.929850 / 6.577499 / 1.929565`, eval
+   `122.896897 / 30.903849 / 6.560915 / 1.917222`. The eval vector is byte-for-byte the
+   `PAPER_SCALE` constant in the comparison notebook. The ansatz is fit against the TRAIN
+   normalization and evaluated against the EVAL one, so there is a built-in slope of
+   **+0.42% (x), +0.08% (y), +0.25% (cotA), +0.64% (cotB)** in every residual plot. Every run so
+   far dumps the train vector (`--label-scale-mode train`, the default, for comparability).
+   `--label-scale-mode align` rescales predictions into the eval normalization and removes it.
+   Nothing in our conclusions turns on 0.4%, but do not quote sub-percent effects until this is
+   settled, and do not mix modes across runs being compared.
 7. **`os.walk` needs depth limiting** (`if depth > 4: dirs.clear()`) — checkpoint trees are huge.
 8. **SLURM on Gilbreth** requires `--partition`, `--account`, `--qos`, and `--gpus-per-task`
    (mandatory even for CPU-only jobs).

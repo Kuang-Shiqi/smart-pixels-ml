@@ -13,3 +13,5 @@ wandb/
 __pycache__/
 *.pyc
 .pixi/
+logs/
+_recover_trainthr.py
