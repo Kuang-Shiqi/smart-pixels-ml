@@ -1,0 +1,167 @@
+{
+ "training": "pure regression (NO teacher/KD) | phase1 MSE means -> phase2 orig-NLL -> phase3 corrected-NLL error head",
+ "sign_source": "in-ansatz TimeGrad: sign=tanh(k*(a0-drift)); alpha<-Tx, beta<-Ty (uncrossed, v3 axes)",
+ "axis_fix": "in-ansatz v3: cols=x@50um, rows=y@12.5um (measured); fixes pitches, widths and sign observables too",
+ "sigma_decode": "softplus diagonal, sigma_i = ||row_i(L)||, Sigma = L L^T (matches custom_loss_fixed)",
+ "sign_init": {
+  "initial_sign_k_alpha": 0.1355043600773146,
+  "initial_sign_a0_alpha": 0.11752630905437852,
+  "initial_sign_k_beta": 0.28207196475069074,
+  "initial_sign_a0_beta": -10.817553243820306
+ },
+ "variant": "barycenter",
+ "n_experts": 1,
+ "digitization": {
+  "n_bits": 2,
+  "level_mode": "code",
+  "levels_initial": [
+   0.0,
+   1.0,
+   2.0,
+   3.0
+  ],
+  "levels_final": [
+   0.0,
+   1.0,
+   2.0,
+   3.0
+  ],
+  "thresholds_initial_e": [
+   248.0,
+   668.0009765625,
+   1663.001953125
+  ],
+  "thresholds_final_e": [
+   248.0,
+   668.0009765625,
+   1663.001953125
+  ],
+  "thresholds_moved_e": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "threshold_offset_e": 80.0,
+  "trainable_thresholds": false,
+  "trainable_levels": false,
+  "parametrization": "paper",
+  "ste": true,
+  "initial_k": 50.0,
+  "final_k": 50.000003814697266,
+  "trainable_k": false,
+  "sigma_noise_e": 80.0,
+  "five_sigma_e": 400.0,
+  "published_thresholds_e": [
+   248.0,
+   668.0,
+   1663.0
+  ],
+  "paper_reference": "arXiv:2602.15946 Sec. IV / Fig. 3 (Max transformer, SoftQuantize)",
+  "offset_from_published_e": [
+   0.0,
+   0.0009765625,
+   0.001953125
+  ],
+  "threshold_provenance": {
+   "n_bits": 2,
+   "scheme": "paper",
+   "source": "published verbatim, arXiv:2602.15946 Sec. IV / Fig. 3 (Max transformer, SoftQuantize)",
+   "thresholds_e": [
+    248.0,
+    668.0009765625,
+    1663.001953125
+   ],
+   "published_thresholds_e": [
+    248.0,
+    668.0,
+    1663.0
+   ],
+   "published_threshold_std_e": [
+    6.0,
+    8.0,
+    39.0
+   ],
+   "paper_reference": "arXiv:2602.15946 Sec. IV / Fig. 3 (Max transformer, SoftQuantize)",
+   "offset_e": 80.0,
+   "t0_min_e": null,
+   "sigma_noise_e": 80.0,
+   "five_sigma_e": 400.0,
+   "t0_over_sigma_noise": 3.1,
+   "t0_below_five_sigma": true,
+   "notes": [],
+   "occupancy_per_code": [
+    0.38640335943706733,
+    0.18675032832336202,
+    0.167701087925807,
+    0.25914522431376363
+   ]
+  }
+ },
+ "level_mode_requested": "code",
+ "level_mode_is_paper_equivalent": true,
+ "k_schedule": {
+  "k_init": 50.0,
+  "k_max": 50.0,
+  "schedule": "cosine",
+  "annealed": false
+ },
+ "thresholds_learned_e": null,
+ "threshold_trace": null,
+ "noise": {
+  "mu": 0.0,
+  "train_sigma_e": 0.0,
+  "test_sigma_e": 0.0,
+  "train_test_mismatch": false,
+  "order": "noise added to analog charge in the generator, then DigitizeLayer",
+  "sigma_noise_nominal_e": 80.0
+ },
+ "metrics": {
+  "x": {
+   "unit": "um",
+   "mean": 0.04946044087409973,
+   "std": 21.9052677154541,
+   "I68": 22.323272705078125,
+   "pull_mu": 0.004393257423893586,
+   "pull_sigma": 1.2101319829389396
+  },
+  "y": {
+   "unit": "um",
+   "mean": 0.22714205086231232,
+   "std": 5.584806442260742,
+   "I68": 5.347347259521484,
+   "pull_mu": 0.021103913681555668,
+   "pull_sigma": 1.1576568483863918
+  },
+  "cotA": {
+   "unit": "deg",
+   "mean": -0.005643335408137078,
+   "std": 7.238138646493681,
+   "I68": 1.8828623514754952,
+   "pull_mu": 0.0009243954598500174,
+   "pull_sigma": 0.83830010145848,
+   "sign_acc": 0.9731570290698749,
+   "sign_acc_confident_half": 0.9992607787695663
+  },
+  "cotB": {
+   "unit": "deg",
+   "mean": 0.20853696455134002,
+   "std": 5.598700505809265,
+   "I68": 2.4415755165354867,
+   "pull_mu": 0.036542769790411336,
+   "pull_sigma": 0.6588660153773022,
+   "sign_acc": 0.9713459370553122,
+   "sign_acc_confident_half": 0.9958788416403319
+  }
+ },
+ "router_hidden": [],
+ "router_temp": 1.0,
+ "total_params": 376,
+ "per_expert_params": 372,
+ "router_params": 0,
+ "epochs_p1": 150,
+ "epochs_p2": 200,
+ "epochs_p3": 120,
+ "best_val_loss_p3": -4.291609287261963,
+ "router_usage_val": null,
+ "router_entropy_val": null
+}

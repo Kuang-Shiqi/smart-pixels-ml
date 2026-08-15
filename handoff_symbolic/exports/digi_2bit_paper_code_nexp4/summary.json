@@ -1,0 +1,279 @@
+{
+ "script": "scripts/train_arm.py",
+ "cli": [
+  "scripts/train_arm.py",
+  "--n-bits",
+  "2",
+  "--n-experts",
+  "4"
+ ],
+ "config": {
+  "dataset_dir": "/depot/cms/users/kuang14/Smart_Pixel/dataset_s_series/dataset_3sr/dataset_3sr_16x16_50x12P5_centeredIncidence_parquets",
+  "batch": 5000,
+  "timeslices": 2,
+  "no_select_contained": false,
+  "regenerate_tfrecords": false,
+  "n_bits": 2,
+  "thr_scheme": "paper",
+  "level_mode": "code",
+  "offset": null,
+  "no_ste": false,
+  "trainable_thr": false,
+  "t_min": 240.0,
+  "parametrization": "paper",
+  "k_init": 50.0,
+  "k_max": 50.0,
+  "noise_mu": 0.0,
+  "noise_sigma": 0.0,
+  "test_noise_sigma": null,
+  "variant": "barycenter",
+  "n_experts": 4,
+  "router_hidden": [
+   32,
+   16
+  ],
+  "router_temp": 1.0,
+  "lr": 0.001,
+  "epochs_p1": 150,
+  "epochs_p2": 200,
+  "epochs_p3": 120,
+  "seed": 42,
+  "out_root": "/depot/cms/private/users/kuang14/Smart_Pixel",
+  "out_dir": null,
+  "tag_suffix": "",
+  "label_scale_mode": "train",
+  "overwrite": false,
+  "dry_run": false,
+  "select_contained": true,
+  "ste": true
+ },
+ "training": "pure regression (NO teacher/KD) | phase1 MSE means -> phase2 orig-NLL -> phase3 corrected-NLL error head",
+ "sign_source": "in-ansatz TimeGrad: sign=tanh(k*(a0-drift)); alpha<-Tx, beta<-Ty (uncrossed, v3 axes)",
+ "axis_fix": "in-ansatz v3: cols=x@50um, rows=y@12.5um (measured)",
+ "sigma_decode": "softplus diagonal, sigma_i = ||row_i(L)||, Sigma = L L^T",
+ "sign_init": {
+  "initial_sign_k_alpha": 0.1355043600773146,
+  "initial_sign_a0_alpha": 0.11752630905437852,
+  "initial_sign_k_beta": 0.28207196475069074,
+  "initial_sign_a0_beta": -10.817553243820306
+ },
+ "sign_calibration": {
+  "alpha": {
+   "k": 0.1355043600773146,
+   "a0": 0.11752630905437852,
+   "val_agreement": 0.9733695551736246,
+   "val_balanced_acc": 0.9734028205936682,
+   "k_sign_negative": false
+  },
+  "beta": {
+   "k": 0.28207196475069074,
+   "a0": -10.817553243820306,
+   "val_agreement": 0.9640184066086378,
+   "val_balanced_acc": 0.9625366287800998,
+   "k_sign_negative": false
+  }
+ },
+ "variant": "barycenter",
+ "n_experts": 4,
+ "digitization": {
+  "n_bits": 2,
+  "level_mode": "code",
+  "levels_initial": [
+   0.0,
+   1.0,
+   2.0,
+   3.0
+  ],
+  "levels_final": [
+   0.0,
+   1.0,
+   2.0,
+   3.0
+  ],
+  "thresholds_initial_e": [
+   248.0,
+   668.0009765625,
+   1663.001953125
+  ],
+  "thresholds_final_e": [
+   248.0,
+   668.0009765625,
+   1663.001953125
+  ],
+  "thresholds_moved_e": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "threshold_offset_e": 80.0,
+  "trainable_thresholds": false,
+  "trainable_levels": false,
+  "parametrization": "paper",
+  "ste": true,
+  "initial_k": 50.0,
+  "final_k": 50.000003814697266,
+  "trainable_k": false,
+  "sigma_noise_e": 80.0,
+  "five_sigma_e": 400.0,
+  "published_thresholds_e": [
+   248.0,
+   668.0,
+   1663.0
+  ],
+  "paper_reference": "arXiv:2602.15946 Sec. IV / Fig. 3 (Max transformer, SoftQuantize)",
+  "offset_from_published_e": [
+   0.0,
+   0.0009765625,
+   0.001953125
+  ],
+  "threshold_provenance": {
+   "n_bits": 2,
+   "scheme": "paper",
+   "source": "published verbatim, arXiv:2602.15946 Sec. IV / Fig. 3 (Max transformer, SoftQuantize)",
+   "thresholds_e": [
+    248.0,
+    668.0009765625,
+    1663.001953125
+   ],
+   "published_thresholds_e": [
+    248.0,
+    668.0,
+    1663.0
+   ],
+   "published_threshold_std_e": [
+    6.0,
+    8.0,
+    39.0
+   ],
+   "paper_reference": "arXiv:2602.15946 Sec. IV / Fig. 3 (Max transformer, SoftQuantize)",
+   "offset_e": 80.0,
+   "t0_min_e": null,
+   "sigma_noise_e": 80.0,
+   "five_sigma_e": 400.0,
+   "t0_over_sigma_noise": 3.1,
+   "t0_below_five_sigma": true,
+   "notes": [],
+   "occupancy_per_code": [
+    0.38640335943706733,
+    0.18675032832336202,
+    0.167701087925807,
+    0.25914522431376363
+   ]
+  }
+ },
+ "level_mode_requested": "code",
+ "level_mode_is_paper_equivalent": true,
+ "k_schedule": {
+  "k_init": 50.0,
+  "k_max": 50.0,
+  "schedule": "cosine",
+  "annealed": false
+ },
+ "thresholds_learned_e": null,
+ "threshold_trace": null,
+ "noise": {
+  "mu": 0.0,
+  "train_sigma_e": 0.0,
+  "test_sigma_e": 0.0,
+  "train_test_mismatch": false,
+  "order": "noise added to analog charge in the generator, then DigitizeLayer",
+  "sigma_noise_nominal_e": 80.0
+ },
+ "noise_diagnostics": {
+  "sigma_requested_e": 0.0,
+  "sigma_measured_e": 43.1437251240861,
+  "frac_pixels_negative": 0.02904755859375,
+  "estimator": "median(|q|, q<0)/0.6745, robust to the dataset's intrinsic negative-charge tail",
+  "t0_over_sigma": 247999999999.99997,
+  "pedestal_fire_rate": 0.0,
+  "pedestal_fire_rate_analytic": 0.0,
+  "hot_pixels_per_frame": 0.0,
+  "code_flip_all": 0.0,
+  "code_flip_signal": 0.0
+ },
+ "labels_scale": {
+  "mode": "train",
+  "train": [
+   123.41016201181557,
+   30.929849811025303,
+   6.577498885094723,
+   1.9295648020239338
+  ],
+  "eval": [
+   122.89689703635774,
+   30.903849401109394,
+   6.560914919886437,
+   1.917222249583349
+  ],
+  "dumped": [
+   123.41016201181557,
+   30.929849811025303,
+   6.577498885094723,
+   1.9295648020239338
+  ],
+  "train_over_eval": [
+   1.0041763867748914,
+   1.0008413324042078,
+   1.002527690941094,
+   1.0064377264781206
+  ]
+ },
+ "metrics": {
+  "x": {
+   "unit": "um",
+   "mean": 0.2481173723936081,
+   "std": 7.415447235107422,
+   "I68": 6.572824478149414,
+   "pull_mu": 0.03855183164196992,
+   "pull_sigma": 0.9355365749813424
+  },
+  "y": {
+   "unit": "um",
+   "mean": -0.0678262785077095,
+   "std": 2.8582470417022705,
+   "I68": 2.194851875305176,
+   "pull_mu": -0.0028382471072821,
+   "pull_sigma": 0.9631859975591642
+  },
+  "cotA": {
+   "unit": "deg",
+   "mean": -0.049464224116808765,
+   "std": 7.229920291778329,
+   "I68": 1.8140003708242247,
+   "pull_mu": -0.006058817884457538,
+   "pull_sigma": 0.9541721150993839,
+   "sign_acc": 0.9740440945463954,
+   "sign_acc_confident_half": 0.9992422982388054
+  },
+  "cotB": {
+   "unit": "deg",
+   "mean": 0.19378349803254327,
+   "std": 5.194570239471893,
+   "I68": 2.2853465745521966,
+   "pull_mu": 0.06860117332282267,
+   "pull_sigma": 0.8800565924562554,
+   "sign_acc": 0.9721405998780285,
+   "sign_acc_confident_half": 0.9965995823400048
+  }
+ },
+ "router_hidden": [
+  32,
+  16
+ ],
+ "router_temp": 1.0,
+ "total_params": 3272,
+ "per_expert_params": 372,
+ "router_params": 1780,
+ "epochs_p1": 150,
+ "epochs_p2": 200,
+ "epochs_p3": 120,
+ "best_val_loss_p3": -6.40132474899292,
+ "router_usage_val": [
+  0.1962323784828186,
+  0.2528017461299896,
+  0.31974464654922485,
+  0.23122206330299377
+ ],
+ "router_entropy_val": 1.3172812461853027,
+ "paper_reference": "arXiv:2602.15946 Sec. IV / Fig. 3 (Max transformer, SoftQuantize)"
+}
