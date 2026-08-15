@@ -80,6 +80,17 @@ Nothing to edit. `compare_baselines_vs_symbolic.ipynb` sections B and C glob
 - **B** — digitization: thresholds published vs learned, I68 and sign vs bit depth
 - **C** — noise: I68 and sign vs sigma, joined only within one quantizer
 
+## Or, for a meeting
+
+```
+$PY_PLOT scripts/make_meeting_report.py --title "Aug 17 algorithm meeting update" \
+                                        --slug 2026-08-17_algorithm_meeting
+```
+(`$PY_PLOT` = the AF global pixi env — no TF needed.) Writes
+`reports/<slug>/` with `REPORT.md`, `summary.csv` and `plots/*.png` sized for slides.
+Every number is recomputed from the parquets, and arms that have not finished are
+skipped with a note rather than faked — so it is safe to run mid-queue and re-run after.
+
 ## Gotchas that already bit us
 
 - **Never `--overwrite` to "redo" an arm** that a plot already quotes. New directory, always.

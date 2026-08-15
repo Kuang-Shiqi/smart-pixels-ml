@@ -43,3 +43,8 @@ run trainthr_noise80 --n-bits 2 --trainable-thr --noise-sigma 80
 run nexp4     --n-bits 2 --n-experts 4
 
 echo "QUEUE COMPLETE $(date '+%F %T')"
+
+# --- added 2026-08-15 for the Aug 17 meeting ---
+run nexp4_noise80 --n-bits 2 --n-experts 4 --noise-sigma 80   # THE deliverable: best model, nominal noise
+run analog_nexp1  --n-bits none                               # matched analog reference, same script
+run analog_nexp4  --n-bits none --n-experts 4
